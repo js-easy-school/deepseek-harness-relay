@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- A reverse proxy on the same machine — Tailscale Funnel and Serve, nginx,
+  Caddy — connects from `127.0.0.1`, and a loopback peer was the operator: no
+  password, no pairing, and an exemption from the rate limit. Funnel's
+  documented HTTP target is exactly that address, so its public URL served the
+  harness to anyone (#1). A loopback request carrying a forwarding header
+  (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`, `Via`) is now classified as
+  network traffic: it must present a credential, and it is throttled. A local
+  browser sends none of those headers and is seated as before. The header is a
+  tell, not a proof — the README still says to point a proxy at a non-loopback
+  address.
+
 ## 0.1.1 — 2026-08-21
 
 - `/relay/...` on the harness's own port answered with the single-page

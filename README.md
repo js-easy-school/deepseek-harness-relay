@@ -183,7 +183,9 @@ Forward the relay's port, not the harness's. Then:
 
 **Do not put Funnel, Serve, nginx, or Caddy in front of `http://127.0.0.1:3443`.** Those proxies connect from loopback, and loopback is the operator: the relay will not ask for a password or a device token. Point the proxy at a non-loopback address this process is listening on (the Tailscale IP, or a VPC address), keep `bind: 0.0.0.0`, and drop `:3443` on the public NIC so that address is not a second door.
 
-Acceptance: unauthenticated `GET /` through the public URL must be **403**. **200** harness HTML means the proxy is coming from loopback.
+The relay refuses that shortcut when it can see it: a loopback request carrying `Forwarded`, `X-Forwarded-*`, `X-Real-IP`, or `Via` is classified as network traffic — it meets the sign-in gate and the rate limit, not the operator's chair. Funnel, Serve, and Caddy always stamp `X-Forwarded-For`, so their clients hit the gate even in the misconfiguration above. It is a tell, not a proof: a proxy configured to strip its forwarding headers is indistinguishable from your own browser, so the non-loopback target is still the deployment to run.
+
+Acceptance: unauthenticated `GET /` through the public URL must be **403**. **200** harness HTML means the proxy is coming from loopback and hiding its forwarding headers — move its target off loopback.
 
 Funnel HTTPS terminates TLS at the edge. Run `tls: off` behind it. The QR from `http://127.0.0.1:3443/relay/pair` encodes that loopback origin; pair from outside by typing the public `https://` name, not by scanning that QR. See [#1](https://github.com/sorsama/deepseek-harness-relay/issues/1).
 
