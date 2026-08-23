@@ -78,6 +78,35 @@ describe('Authenticator', () => {
     auth.dispose()
   })
 
+  it('refuses the operator chair to a loopback peer relaying for a proxy', () => {
+    const auth = new Authenticator(store, configFor())
+    // Funnel, Serve, nginx, and Caddy connect from 127.0.0.1 on behalf of the
+    // network; the forwarding headers they stamp are what gives them away.
+    for (const headers of [
+      { 'x-forwarded-for': '203.0.113.7' },
+      { forwarded: 'for=203.0.113.7' },
+      { via: '1.1 tailscale' },
+    ]) {
+      expect(auth.identify({ headers, address: '127.0.0.1', local: true }, NOW))
+        .toEqual({ credential: 'none', privileged: false })
+    }
+    auth.dispose()
+  })
+
+  it('still honours a real credential arriving through that proxy', async () => {
+    const auth = new Authenticator(store, configFor())
+    const code = auth.pairing.issue(8, 300_000, NOW)
+    const paired = await auth.pair({ code: code.code, name: 'Pixel', address: '192.168.1.9' }, NOW)
+    const identity = auth.identify({
+      headers: { 'x-forwarded-for': '203.0.113.7', authorization: `Bearer ${paired!.token}` },
+      address: '127.0.0.1',
+      local: true,
+    }, NOW)
+    expect(identity.credential).toBe('device')
+    expect(identity.deviceId).toBe(paired!.device.id)
+    auth.dispose()
+  })
+
   describe('pairing', () => {
     it('mints a device token that then authenticates', async () => {
       const auth = new Authenticator(store, configFor())

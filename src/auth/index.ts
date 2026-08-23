@@ -26,6 +26,25 @@ import { hashToken, mintDeviceId, mintToken, readBearer, readCookie, signSession
 /** Name of the signed sign-in cookie. */
 export const SESSION_COOKIE = 'dsh_relay_session'
 
+/**
+ * Headers a forwarding proxy stamps on the traffic it relays.
+ *
+ * Funnel, Serve, and Caddy always add `X-Forwarded-For`; nginx does in any
+ * configuration written from its own documentation. A browser never sends any
+ * of these on its own, so a false positive costs one sign-in, while a false
+ * negative seats the internet in the operator's chair.
+ */
+const FORWARDING_TELLS = ['forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-real-ip', 'via'] as const
+
+/**
+ * Whether a request visibly came through a forwarding proxy.
+ * @param headers - the inbound request headers.
+ * @returns true when any forwarding header is present.
+ */
+export function isForwarded(headers: IncomingHttpHeaders): boolean {
+  return FORWARDING_TELLS.some(name => headers[name] !== undefined)
+}
+
 /** How a request proved who it is. */
 export type CredentialClass = 'loopback' | 'session' | 'device' | 'address-grant' | 'none'
 
@@ -141,7 +160,13 @@ export class Authenticator {
    */
   identify(request: AuthRequest, now: number): Identity {
     const allowPrivileged = this.config.privilegedMethods === 'allow-authenticated'
-    if (request.local) return { credential: 'loopback', privileged: true }
+    // Loopback is the operator only when the request originated there too. A
+    // reverse proxy on this machine connects from 127.0.0.1 on behalf of
+    // anyone who can reach it, and the forwarding headers it adds are the
+    // visible difference from the operator's own browser. A forwarded request
+    // falls through to the credential checks — a proxied client presenting a
+    // real token is still that device.
+    if (request.local && !isForwarded(request.headers)) return { credential: 'loopback', privileged: true }
 
     const bearer = readBearer(request.headers.authorization)
     if (bearer !== undefined) {

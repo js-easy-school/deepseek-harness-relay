@@ -23,6 +23,7 @@ import { createServer as createHttpServer } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
 import type { IncomingMessage, Server, ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
+import { isForwarded } from './auth/index.ts'
 import type { Authenticator, CredentialClass, Identity } from './auth/index.ts'
 import type { Config } from './config.ts'
 import { checkFence, isLoopbackHostname } from './fence.ts'
@@ -159,7 +160,10 @@ async function serve(
   const address = normalizeAddress(req.socket.remoteAddress)
   const local = isLoopbackHostname(address === '' ? 'x' : address)
 
-  if (!local && runtime.auth.exceedsRate(address, now)) {
+  // A forwarded loopback request is a reverse proxy fronting for the network,
+  // so it does not share the operator's exemption from throttling — behind
+  // Funnel, every client on the internet arrives on this one peer address.
+  if ((!local || isForwarded(req.headers)) && runtime.auth.exceedsRate(address, now)) {
     res.writeHead(429, { 'content-type': 'text/plain; charset=utf-8', 'retry-after': '60' })
     res.end('too many requests')
     return

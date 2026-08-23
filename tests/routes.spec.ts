@@ -182,6 +182,54 @@ describe('the link into the harness UI', () => {
   })
 })
 
+describe('a reverse proxy on loopback is not the operator', () => {
+  // What Funnel, Serve, nginx, and Caddy actually send: a loopback TCP peer
+  // whose requests carry the address they are forwarding for.
+  const proxied = { 'x-forwarded-for': '203.0.113.7' }
+
+  it('answers the forwarded request with the gate, not the harness', async () => {
+    const response = await fetch(`${base}/`, { headers: proxied, redirect: 'manual' })
+    expect(response.status).toBe(403)
+    expect(await response.text()).not.toBe('harness')
+  })
+
+  it('sends a forwarded browser to sign in', async () => {
+    await auth.setPassword('a-long-test-password')
+    const response = await fetch(`${base}/`, { headers: { ...proxied, accept: 'text/html' }, redirect: 'manual' })
+    expect(response.status).toBe(303)
+    expect(response.headers.get('location')).toBe('/relay/login?next=%2F')
+  }, 20_000)
+
+  it('keeps first-run password setup away from the proxy', async () => {
+    const response = await fetch(`${base}/relay/password`, { headers: proxied, redirect: 'manual' })
+    expect(response.status).toBe(403)
+    expect(auth.hasPassword).toBe(false)
+  })
+
+  it('throttles the proxy, which the operator never is', async () => {
+    const upstreamAddress = upstream.address()
+    const upstreamPort = typeof upstreamAddress === 'object' && upstreamAddress !== null ? upstreamAddress.port : 0
+    const config = Config({ stateDir: dir, port: 0, tls: 'off', mdns: false, rateLimitPerMinute: 1 }) as RelayConfig
+    const throttled = new Authenticator(store, config)
+    const listener = await startListener({
+      runtime: { auth: throttled, config, target: { host: '127.0.0.1', port: upstreamPort, timeoutMs: 5000 }, log: () => undefined },
+      bind: '127.0.0.1',
+      port: 0,
+      authorities: ['127.0.0.1', 'localhost'],
+    })
+    try {
+      const origin = `http://127.0.0.1:${String(listener.port)}`
+      expect((await fetch(`${origin}/`, { headers: proxied })).status).toBe(403)
+      expect((await fetch(`${origin}/`, { headers: proxied })).status).toBe(429)
+      // The operator's own requests never enter the throttle the proxy filled.
+      expect((await fetch(`${origin}/`)).status).toBe(200)
+    } finally {
+      await listener.close()
+      throttled.dispose()
+    }
+  })
+})
+
 describe('a locked-out caller is told to wait, not that the code was wrong', () => {
   it('answers a pairing lockout with 429 and a Retry-After', async () => {
     auth.pairing.issue(8, 300_000, Date.now())

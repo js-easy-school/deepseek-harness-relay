@@ -12,6 +12,8 @@ So the question this plugin answers is not "how do we restrict what a remote use
 
 **A rebound web page.** Proxying rewrites `Host` to the loopback authority, which is exactly what the harness's fence exists to detect — so the relay carries that fence itself, and applies it *before* the rewrite and before any credential is read. A page at `evil.example` that points a short-TTL DNS record at your relay still sends `Host: evil.example`, and the relay refuses it. This is why `trustedHosts` and `publicHostnames` matter: the relay only answers to the authorities it was told about.
 
+**A reverse proxy on loopback seating the internet as you.** Tailscale Funnel, Serve, nginx, and Caddy connect from `127.0.0.1`, where the relay would otherwise ask for nothing. A loopback request carrying a forwarding header (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`, `Via`) is therefore classified as network traffic: it must present a credential, and it is rate limited. The header is a tell, not a proof — a proxy that strips them is indistinguishable from the operator's browser, which is why the README says to point a proxy at a non-loopback address instead.
+
 **Credential replay after you notice.** Every device is individually revocable, and "sign out everywhere" rotates the signing key, which invalidates every cookie and every device token at once.
 
 **Brute force.** Sign-ins and pairing attempts are counted per source address and locked out; every request is rate limited per address.
