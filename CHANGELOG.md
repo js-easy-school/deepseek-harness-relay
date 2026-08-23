@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.2 — 2026-08-23
 
 - A reverse proxy on the same machine — Tailscale Funnel and Serve, nginx,
   Caddy — connects from `127.0.0.1`, and a loopback peer was the operator: no
