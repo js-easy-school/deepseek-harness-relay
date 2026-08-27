@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.3 — 2026-08-27
 
 - A browser reaching the web UI over plain HTTP from anything but loopback
   never got a live page: sign-in worked, then sessions, workspaces, and the
