@@ -33,6 +33,7 @@ import { advertise } from './mdns.ts'
 import { relayStateDir } from './paths.ts'
 import { installSettingsSection } from './settings-section.ts'
 import { RELAY_PREFIX } from './routes.ts'
+import { injectSecureContextShim } from './secure-context.ts'
 import { startListener, type RelayRuntime } from './server.ts'
 import { RelayStore } from './state.ts'
 import { certificateSans, loadCertificate } from './tls.ts'
@@ -250,6 +251,12 @@ async function start(
     },
   })
   const untap = config.uiLink ? ctx.webServer.tapIndex(injectRelayLink) : () => undefined
+  // Unconditional, and inert wherever it is not needed: the shim defines
+  // nothing when the real `crypto.randomUUID` is there, which is every TLS
+  // deployment and the harness's own loopback port. Gating it on the
+  // plaintext paths instead would tie a browser's ability to hold a
+  // connection to a configuration field nothing else connects it to.
+  const untapShim = ctx.webServer.tapIndex(injectSecureContextShim)
   // Every address, not a guess at the best one: a machine with a
   // virtual-machine or VPN adapter alongside real Wi-Fi has several, and the
   // first one the operating system reports is regularly the one a phone has
@@ -283,6 +290,7 @@ async function start(
     // async disposers concurrently with no completion ordering, so anything
     // order-dependent belongs inside a single one.
     stop: async () => {
+      untapShim()
       untap()
       unroute()
       await unadvertise()

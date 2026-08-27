@@ -9,6 +9,7 @@
  * `/relay/health` or set the password by POSTing the form directly.
  */
 import { createServer, type Server } from 'node:http'
+import { createContext, runInContext } from 'node:vm'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -17,6 +18,7 @@ import { Authenticator } from '../src/auth/index.ts'
 import { injectRelayLink } from '../src/badge.ts'
 import { Config, type Config as RelayConfig } from '../src/config.ts'
 import { startListener, type RelayListener, type RelayRuntime } from '../src/server.ts'
+import { injectSecureContextShim } from '../src/secure-context.ts'
 import { RelayStore } from '../src/state.ts'
 
 let upstream: Server
@@ -179,6 +181,90 @@ describe('the link into the harness UI', () => {
 
   it('needs no script — the relative href is answered by the redirect route', () => {
     expect(injectRelayLink('<body></body>')).not.toContain('<script')
+  })
+})
+
+/** A crypto object carrying only what a browser exposes on an insecure origin. */
+function insecureCrypto(): { getRandomValues: (into: Uint8Array) => Uint8Array, randomUUID?: () => string } {
+  let next = 0
+  return {
+    getRandomValues: (into) => {
+      for (let at = 0; at < into.length; at += 1) into[at] = (next += 37) & 0xff
+      return into
+    },
+  }
+}
+
+/** Stands in for the function a secure context already provides. */
+const browserRandomUuid = (): string => 'the-browser-implementation'
+
+describe('minting ids on a page the browser does not call secure', () => {
+  /** A document shaped like the one the frontend actually serves. */
+  const index = '<!doctype html><html><head><meta charset="utf-8">'
+    + '<script type="module" src="/assets/index.js"></script></head><body><div id="root"></div></body></html>'
+
+  /**
+   * Execute the injected script against one crypto object.
+   * @param crypto - the object the script will find at `globalThis.crypto`.
+   * @returns that same object, after the script has had its way with it.
+   */
+  function run(crypto: unknown): { randomUUID?: () => string } {
+    const script = /<script id="dsh-relay-secure-context">([\s\S]*?)<\/script>/.exec(
+      injectSecureContextShim(index),
+    )?.[1]
+    expect(script).toBeDefined()
+    runInContext(script ?? '', createContext({ crypto }))
+    return crypto as { randomUUID?: () => string }
+  }
+
+  it('injects one classic script after the opening head tag', () => {
+    const injected = injectSecureContextShim(index)
+    expect(injected).toContain('<script id="dsh-relay-secure-context">')
+    // Ahead of the deferred module, which is the only ordering that matters:
+    // the module runs after parsing, this runs during it.
+    expect(injected.indexOf('dsh-relay-secure-context')).toBeLessThan(injected.indexOf('/assets/index.js'))
+  })
+
+  it('is idempotent — the tap runs on every index response, including SPA fallbacks', () => {
+    const once = injectSecureContextShim(index)
+    expect(injectSecureContextShim(once)).toBe(once)
+  })
+
+  it('falls back to the body element when a document carries no head', () => {
+    expect(injectSecureContextShim('<body></body>')).toContain('dsh-relay-secure-context')
+  })
+
+  it('leaves a document with neither element alone, rather than pushing the doctype into quirks mode', () => {
+    expect(injectSecureContextShim('not html at all')).toBe('not html at all')
+  })
+
+  it('mints an RFC 4122 version 4 UUID from getRandomValues', () => {
+    const minted = run(insecureCrypto()).randomUUID?.()
+    expect(minted).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+  })
+
+  it('mints a different id each time, or every RPC would correlate to the same call', () => {
+    const crypto = run(insecureCrypto())
+    expect(crypto.randomUUID?.()).not.toBe(crypto.randomUUID?.())
+  })
+
+  it('defines nothing where the real function exists, so TLS and loopback are untouched', () => {
+    const crypto = run({ ...insecureCrypto(), randomUUID: browserRandomUuid })
+    expect(crypto.randomUUID).toBe(browserRandomUuid)
+  })
+
+  it('defines nothing without getRandomValues either — a Math.random id would only look like it worked', () => {
+    expect(run({}).randomUUID).toBeUndefined()
+  })
+
+  it('survives a crypto object that refuses the definition', () => {
+    const frozen = Object.freeze(insecureCrypto())
+    expect(() => run(frozen)).not.toThrow()
+    expect(frozen.randomUUID).toBeUndefined()
+  })
+
+  it('survives a page with no crypto at all, because it runs inside the harness response', () => {
+    expect(() => run(undefined)).not.toThrow()
   })
 })
 

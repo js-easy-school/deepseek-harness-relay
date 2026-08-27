@@ -37,7 +37,7 @@ Because the harness stays on loopback, a relay that fails to start or is misconf
 - **A device list** with per-device revoke and a "sign out everywhere" that rotates the signing key.
 - **TLS**, either from your own certificate or self-signed with a published SPKI pin.
 - **mDNS advertisement** on `_dsh._tcp`, so a client can find the relay without sweeping the subnet.
-- **The whole web UI**, unchanged. The proxy is transparent, so the browser app works from a phone exactly as it does locally, with a **Relay** link in the corner for the pages above.
+- **The whole web UI**, unchanged. The proxy is transparent, so the browser app works from a phone exactly as it does locally, with a **Relay** link in the corner for the pages above. Two small additions ride in the index document rather than the proxy: that link, and a shim that lets the page mint request ids where a browser withholds `crypto.randomUUID`.
 - **A card in Settings → Plugins**, on the machine running the harness, for the switches that are configuration rather than operations.
 
 ## Install
@@ -211,6 +211,10 @@ Set the network to Private. If it still times out, check the router for AP/clien
 **The plugin refuses to start, naming the webserver row.** You still have the old LAN patch that binds the harness to `0.0.0.0`. Remove it — the relay cannot protect a server that is already answering the network.
 
 **DSH Mobile says "the harness rejected this address".** That is a 403. Either the address grant expired or the phone's address changed; pair again from the phone's browser.
+
+**The page loads but the sidebar stays empty, and the console repeats `connection lost, retry #N`.** Browsers expose `crypto.randomUUID` only over HTTPS or on `localhost`, and the harness's browser client mints every RPC id with it — so over plain HTTP from a LAN address the readiness handshake throws and both event sockets are closed before they open. Unary calls still work, which is why sign-in looks fine. The relay ships a shim for this in the index document, so if you still see it the page did not come from that document: hard-reload past a cached copy, and check that nothing in front of the relay is serving its own `index.html`. Browsing over TLS or from `127.0.0.1` avoids it outright.
+
+**The model picker is empty, and settings pages say "settings are unavailable in this browser".** Expected on any address but loopback, over TLS as well, and not something the relay can fix from where it sits. The harness's browser client decides whether the configuration plane exists by reading `location.hostname`; on a LAN address it creates the settings mirror in memory and never sends the calls — which this relay would have carried, since `privilegedMethods` defaults to letting an authenticated client through. Sessions, workspaces, and chat are unaffected. Reach settings, the provider directory, and model discovery from a browser on the machine running the harness. The fix belongs upstream, in the client rather than the relay; see [#4](https://github.com/sorsama/deepseek-harness-relay/issues/4).
 
 ## Development
 
