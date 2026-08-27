@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+- A browser reaching the web UI over plain HTTP from anything but loopback
+  never got a live page: sign-in worked, then sessions, workspaces, and the
+  model picker stayed empty behind `[web-runtime] connection lost, retry #N`,
+  forever (#4). `crypto.randomUUID` is a secure-context API — HTTPS or
+  `localhost`, nowhere else — and the harness's browser client mints every RPC
+  correlation id with it, so `host.describe` threw inside the readiness
+  handshake, the connection generation aborted, and both `/api/events.*`
+  sockets were closed while still connecting. Every unary call kept working,
+  which is exactly what made it look like the proxy damaging the WebSocket. The
+  relay now injects a guarded shim into the index head, through the same
+  `tapIndex` seam that carries the **Relay** link, defining `randomUUID` from
+  `crypto.getRandomValues` where the browser withholds it. It defines nothing
+  on a TLS listener or on the harness's own loopback port, and nothing in the
+  proxy buffers a response to do it. The real fix belongs upstream in
+  `AbstractApiClient.mintRpcId`.
+- A remote browser still gets no model picker, provider directory, or settings
+  pages, over TLS as well as plain HTTP: the harness's client decides whether
+  the configuration plane exists from `location.hostname` alone, so it never
+  makes the calls this relay would have carried. That is now written down under
+  Troubleshooting rather than left to be rediscovered.
+
 ## 0.1.2 — 2026-08-23
 
 - A reverse proxy on the same machine — Tailscale Funnel and Serve, nginx,
