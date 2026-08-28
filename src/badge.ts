@@ -47,12 +47,14 @@ const MARKUP = `<a id="${ELEMENT_ID}" href="${TARGET_PATH}" title="dsh-relay —
   font: 12px/18px var(--dsw-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
   text-decoration: none;
   box-shadow: var(--dsw-shadow-lv1, 0 2px 4px 0 rgba(0, 0, 0, 0.05));
-  opacity: 0.55;
-  transition: opacity 0.2s var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1));
+  opacity: 0.75;
+  transition: opacity 0.2s var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1)),
+    background 0.2s var(--ds-ease-in-out, cubic-bezier(0.4, 0, 0.2, 1));
 }
 #${ELEMENT_ID}:hover, #${ELEMENT_ID}:focus-visible {
   opacity: 1;
   color: var(--dsw-alias-label-primary, #0f1115);
+  background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, 0.06));
 }
 @media (prefers-reduced-motion: reduce) { #${ELEMENT_ID} { transition: none; } }
 </style>`

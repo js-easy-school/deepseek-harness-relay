@@ -62,12 +62,18 @@ export function apply(ctx: RelayClientContext): void {
       // The reserved compartment: the renderer binds each bare observable here
       // to a `use<Name>` hook, so the component subscribes to nothing itself.
       hooks: { relayCard: scope },
-      setField: (field: string, value: unknown) => {
+      setField: async (field: string, value: unknown): Promise<boolean> => {
         // A rejected write leaves the stored value alone and the next snapshot
         // shows what actually stands, so the card needs no rollback of its own.
-        void scope.set(field, value).catch((error: unknown) => {
+        // It does need to know whether the write landed: its save keeps the
+        // staged edits and says so rather than clearing them over a failure.
+        try {
+          await scope.set(field, value)
+          return true
+        } catch (error: unknown) {
           ctx.logger?.warn?.(`dsh-relay: settings write failed: ${String(error)}`)
-        })
+          return false
+        }
       },
     }),
   }, RelayCard))

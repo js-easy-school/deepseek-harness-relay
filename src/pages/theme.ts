@@ -24,11 +24,18 @@ export const THEME_CSS = `
     'Liberation Mono', Menlo, Courier, 'PingFang SC', 'Microsoft YaHei';
   --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
   --ds-transition-duration: 0.2s;
+  /* Shadows are the one family upstream does not flip between themes. */
+  --dsw-shadow-lv1: 0 2px 4px 0 rgba(0, 0, 0, 0.05);
+  --dsw-shadow-lv3:
+    0 0 1px 0 rgba(0, 0, 0, 0.2), 0 0 4px 0 rgba(0, 0, 0, 0.02), 0 12px 32px 0 rgba(0, 0, 0, 0.08);
 }
 
 body {
   --dsw-alias-bg-base: rgb(255, 255, 255);
+  --dsw-alias-bg-layer-1: rgb(255, 255, 255);
   --dsw-alias-bg-layer-2: rgb(255, 255, 255);
+  --dsw-alias-bg-layer-3: rgb(255, 255, 255);
+  --dsw-alias-bg-module-platform: rgb(245, 246, 247);
   --dsw-alias-border-l1: rgba(0, 0, 0, 0.04);
   --dsw-alias-border-l2: rgba(0, 0, 0, 0.1);
   --dsw-alias-border-l3: rgba(0, 0, 0, 0.12);
@@ -41,24 +48,32 @@ body {
   --dsw-alias-label-secondary: rgb(97, 102, 107);
   --dsw-alias-label-tertiary: rgb(129, 133, 140);
   --dsw-alias-label-caption: rgb(173, 178, 184);
+  --dsw-alias-label-dimmed: rgb(225, 229, 238);
   --dsw-alias-label-primary-foreground: rgb(255, 255, 255);
+  --dsw-alias-scrollbar-bg-l2: rgb(229, 229, 229);
+  --dsw-alias-scrollbar-hover-l2: rgb(212, 212, 212);
   --dsw-alias-state-business-primary: rgb(65, 118, 230);
   --dsw-alias-state-error-primary: rgb(236, 19, 19);
   --dsw-alias-state-success-primary: rgb(34, 197, 94);
   --dsw-alias-state-warn-primary: rgb(245, 158, 11);
   --dsw-alias-state-warn-tertiary: rgb(254, 245, 231);
   --dsw-alias-state-warn-label: rgb(221, 134, 41);
+  --dsw-static-neutral-bluish-400: rgb(173, 178, 184);
   --dsw-specific-login-input: rgb(249, 250, 251);
   --dsw-specific-tip: rgb(245, 246, 247);
-  --dsw-shadow-lv3:
-    0 0 1px 0 rgba(0, 0, 0, 0.2), 0 0 4px 0 rgba(0, 0, 0, 0.02), 0 12px 32px 0 rgba(0, 0, 0, 0.08);
+  /* Upstream has no state-error-tertiary alias, so an error notice was
+     borrowing the amber warn surface. These are its red-100 and red-900 steps. */
+  --dsw-specific-error-tip: rgb(254, 226, 226);
   --dsw-qr-ink: rgb(15, 17, 21);
   --dsw-qr-paper: rgb(255, 255, 255);
 }
 
 body[data-ds-dark-theme] {
   --dsw-alias-bg-base: rgb(21, 21, 23);
+  --dsw-alias-bg-layer-1: rgb(35, 35, 36);
   --dsw-alias-bg-layer-2: rgb(44, 44, 46);
+  --dsw-alias-bg-layer-3: rgb(53, 54, 56);
+  --dsw-alias-bg-module-platform: rgb(53, 54, 56);
   --dsw-alias-border-l1: rgba(255, 255, 255, 0.06);
   --dsw-alias-border-l2: rgba(255, 255, 255, 0.12);
   --dsw-alias-border-l3: rgba(255, 255, 255, 0.16);
@@ -71,17 +86,22 @@ body[data-ds-dark-theme] {
   --dsw-alias-label-secondary: rgb(207, 211, 214);
   --dsw-alias-label-tertiary: rgb(173, 178, 184);
   --dsw-alias-label-caption: rgb(129, 133, 140);
+  --dsw-alias-label-dimmed: rgb(67, 69, 74);
   --dsw-alias-label-primary-foreground: rgb(15, 17, 21);
+  --dsw-alias-scrollbar-bg-l2: rgb(84, 85, 87);
+  --dsw-alias-scrollbar-hover-l2: rgb(101, 103, 107);
   --dsw-alias-state-business-primary: rgb(103, 158, 254);
   --dsw-alias-state-error-primary: rgb(242, 90, 90);
   --dsw-alias-state-warn-tertiary: rgb(39, 36, 31);
   --dsw-specific-login-input: rgb(27, 27, 28);
   --dsw-specific-tip: rgb(53, 54, 56);
+  --dsw-specific-error-tip: rgb(87, 12, 12);
   --dsw-qr-ink: rgb(15, 17, 21);
   --dsw-qr-paper: rgb(249, 250, 251);
 }
 
-html, body { height: 100%; margin: 0; }
+html { height: 100%; }
+body { min-height: 100%; margin: 0; }
 
 body {
   font-family: var(--dsw-font-family);
@@ -90,7 +110,6 @@ body {
   color: var(--dsw-alias-label-primary);
   background: var(--dsw-alias-bg-base);
   display: flex;
-  align-items: center;
   justify-content: center;
   padding: 24px;
   box-sizing: border-box;
@@ -98,8 +117,31 @@ body {
 
 button, input, select, textarea { font-family: inherit; }
 
+/* Scrollbar skin, ported from the harness sheet so a scrolling relay page does
+   not render a light native bar over the dark palette. The @supports gate is
+   load-bearing rather than defensive: a non-auto scrollbar-color makes
+   Chromium and Safari drop every ::-webkit-scrollbar rule, so declaring both
+   paths silences the hover state on exactly the engines that implement it. */
+@supports not selector(::-webkit-scrollbar) {
+  body, body * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--dsw-alias-scrollbar-bg-l2) transparent;
+  }
+}
+@supports selector(::-webkit-scrollbar) {
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { border-radius: 4px; background: var(--dsw-alias-scrollbar-bg-l2); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--dsw-alias-scrollbar-hover-l2); }
+}
+
+/* Centred by auto margins rather than align-items: a flex item centred on the
+   cross axis is clipped past the top of the viewport once it grows taller than
+   one, and the device list does. Auto margins centre while there is room and
+   yield to the scroll when there is not. */
 .card {
   width: min(380px, 100%);
+  margin: auto 0;
   box-sizing: border-box;
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 24px;
@@ -141,8 +183,14 @@ input[type="text"], input[type="password"] {
 }
 input:focus-visible { border-color: var(--dsw-alias-state-business-primary); }
 
-button {
+/* The capsule from the harness's Button primitive: h36, pad 0/14, gap 4, r18,
+   with the compact form at h28/r14. The .btn class carries the same geometry
+   onto an anchor, so a navigation target is a control rather than a line of
+   underlined text: every action on these pages ends up with one weight and one
+   hit target whether it posts a form or follows a link. */
+button, .btn {
   height: 36px;
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -153,19 +201,54 @@ button {
   cursor: pointer;
   font-size: 14px;
   line-height: 22px;
+  font-weight: 400;
   color: var(--dsw-alias-label-primary);
   background: transparent;
-  transition: background var(--ds-transition-duration) var(--ds-ease-in-out);
+  text-decoration: none;
+  transition: background var(--ds-transition-duration) var(--ds-ease-in-out),
+    color var(--ds-transition-duration) var(--ds-ease-in-out);
 }
 button:disabled { cursor: not-allowed; opacity: 0.4; }
-button.primary {
+button.primary, .btn.primary {
   background: var(--dsw-alias-button-primary-fill);
   color: var(--dsw-alias-label-primary-foreground);
 }
-button.primary:hover:not(:disabled) { background: var(--dsw-alias-button-primary-hover); }
-button.outline { border: 1px solid var(--dsw-alias-border-l2); }
-button.outline:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
-button.sm { height: 28px; padding: 0 10px; border-radius: 14px; font-size: 12px; line-height: 18px; }
+button.primary:hover:not(:disabled), .btn.primary:hover {
+  background: var(--dsw-alias-button-primary-hover);
+}
+button.outline, .btn.outline { border: 1px solid var(--dsw-alias-border-l2); }
+button.outline:hover:not(:disabled), .btn.outline:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+button.ghost, .btn.ghost { color: var(--dsw-alias-label-secondary); }
+button.ghost:hover:not(:disabled), .btn.ghost:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+button.ghost:active:not(:disabled), .btn.ghost:active {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+button.sm, .btn.sm { height: 28px; padding: 0 10px; border-radius: 14px; font-size: 12px; line-height: 18px; }
+button:focus-visible, .btn:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 1px;
+}
+
+/* One row of equal-weight actions. A form is a column everywhere else on these
+   pages, which would otherwise put every single-button form on a line of its
+   own; inside an action row it is only the wrapper its button needs to post,
+   so display: contents lets the button itself be the flex item. */
+.actions { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; }
+.actions form { display: contents; }
+.actions > .btn, .actions > button, .actions form > button { flex: 1 1 auto; }
+.actions.stack { flex-direction: column; }
+.actions.stack > .btn, .actions.stack > button, .actions.stack form > button { flex: none; }
+
+/* A link inside running prose keeps the accent treatment. A link wearing .btn
+   is a control, and a control never underlines. */
+a { color: var(--dsw-alias-state-business-primary); text-decoration: none; }
+a:hover, a:focus-visible { text-decoration: underline; }
+a.btn:hover, a.btn:focus-visible { text-decoration: none; }
 
 .notice {
   border-radius: 12px;
@@ -173,7 +256,7 @@ button.sm { height: 28px; padding: 0 10px; border-radius: 14px; font-size: 12px;
   font-size: 13px;
   line-height: 20px;
 }
-.notice.error { background: var(--dsw-alias-state-warn-tertiary); color: var(--dsw-alias-state-error-primary); }
+.notice.error { background: var(--dsw-specific-error-tip); color: var(--dsw-alias-state-error-primary); }
 .notice.warn { background: var(--dsw-alias-state-warn-tertiary); color: var(--dsw-alias-state-warn-label); }
 .notice.tip { background: var(--dsw-specific-tip); color: var(--dsw-alias-label-secondary); }
 
@@ -190,10 +273,23 @@ button.sm { height: 28px; padding: 0 10px; border-radius: 14px; font-size: 12px;
 .row .meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .row .name { font-size: 14px; line-height: 22px; font-weight: 500; }
 .row .sub { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
+.row form { display: contents; }
+.row .end { display: flex; align-items: center; gap: 10px; flex: none; }
 
-.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-.dot.ok { background: var(--dsw-alias-state-success-primary); }
-.dot.off { background: var(--dsw-alias-label-caption); }
+/* The StateDot halo: a full-size layer at a tenth opacity behind a solid core
+   inset to 60%, both riding the colour its state sets on the element. */
+.dot {
+  position: relative;
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  flex: none;
+}
+.dot::before, .dot::after { content: ''; position: absolute; border-radius: 50%; background: currentColor; }
+.dot::before { inset: 0; opacity: 0.1; }
+.dot::after { inset: 20%; }
+.dot.ok { color: var(--dsw-alias-state-success-primary); }
+.dot.off { color: var(--dsw-alias-label-caption); }
 
 .qr { display: flex; justify-content: center; padding: 16px; border-radius: 12px; background: var(--dsw-qr-paper); }
 .qr svg { width: 100%; height: auto; max-width: 260px; shape-rendering: crispEdges; }

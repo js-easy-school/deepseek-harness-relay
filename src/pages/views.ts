@@ -7,6 +7,11 @@
  * page, and there is nothing to bundle. Cross-site form posts are refused by
  * the fence and the session cookie is `SameSite=Strict`, so the forms need no
  * separate token.
+ *
+ * Navigation is a control, not a line of prose. A page's ways onward are
+ * buttons in an action row — `.btn` gives an anchor the same capsule the
+ * harness's Button primitive gives a `button`, so a person reads one weight
+ * and one hit target whether the action posts a form or follows a link.
  * @module dsh-relay/pages/views
  */
 
@@ -76,7 +81,8 @@ export function passwordPage(options: {
     : `<div class="notice error">${escapeHtml(options.error)}</div>`
   const heading = options.hasPassword ? 'Change the password' : 'Set a password'
   const lead = options.hasPassword
-    ? 'Replacing it does not sign anyone out. Use <strong>sign out everywhere</strong> on the devices page for that.'
+    ? 'Replacing it does not sign anyone out. Use <a href="/relay/devices">sign out everywhere</a> on the '
+      + 'devices page for that.'
     : 'Nobody can sign in from the network until you set one. Anyone who does can run commands on this machine, because that is what the agent does.'
   return page({
     title: heading,
@@ -129,10 +135,15 @@ export function pairPage(options: {
   <p class="caption">Expires in ${String(options.expiresInSeconds)} seconds, and works once.</p>
   ${plain}
   ${pin}
-  <form method="post" action="/relay/pair/new">
-    <button class="outline" type="submit">New code</button>
-  </form>
-  <p class="caption"><a href="/relay/devices">Paired devices</a> &middot; <a href="/">Back to the harness</a></p>`,
+  <div class="actions">
+    <form method="post" action="/relay/pair/new">
+      <button class="outline" type="submit">New code</button>
+    </form>
+    <a class="btn outline" href="/relay/devices">Paired devices</a>
+  </div>
+  <div class="actions">
+    <a class="btn ghost" href="/">Back to the harness</a>
+  </div>`,
   })
 }
 
@@ -193,7 +204,10 @@ export function pairedPage(options: {
   <div class="notice tip mono" style="word-break: break-all">${escapeHtml(options.token)}</div>
   ${grant}
   ${plain}
-  <p class="caption"><a href="/">Open the harness</a> &middot; <a href="/relay/devices">Paired devices</a></p>`,
+  <div class="actions">
+    <a class="btn primary" href="/">Open the harness</a>
+    <a class="btn outline" href="/relay/devices">Paired devices</a>
+  </div>`,
   })
 }
 
@@ -220,10 +234,13 @@ export function devicesPage(options: {
         <span class="sub">last seen ${escapeHtml(since(device.lastSeenAt, options.now))}${
           device.lastAddress === undefined ? '' : ` &middot; ${escapeHtml(device.lastAddress)}`}</span>
       </div>
-      <form method="post" action="/relay/devices/revoke">
-        <input type="hidden" name="deviceId" value="${escapeHtml(device.id)}">
-        <button class="outline sm" type="submit">Revoke</button>
-      </form>
+      <div class="end">
+        <span class="dot ${device.lastSeenAt === undefined ? 'off' : 'ok'}"></span>
+        <form method="post" action="/relay/devices/revoke">
+          <input type="hidden" name="deviceId" value="${escapeHtml(device.id)}">
+          <button class="outline sm" type="submit">Revoke</button>
+        </form>
+      </div>
     </div>`).join('')
 
   const pin = options.fingerprint === undefined
@@ -259,15 +276,21 @@ export function devicesPage(options: {
     </div>
     <span class="dot ${options.hasPassword ? 'ok' : 'off'}"></span>
   </div>
-  <form method="post" action="/relay/pair/new">
-    <button class="primary" type="submit">Pair a new device</button>
-  </form>
-  <p class="caption"><a href="/relay/password">${options.hasPassword ? 'Change the password' : 'Set a password'}</a></p>
-  <form method="post" action="/relay/signout-everywhere">
-    <button class="outline" type="submit">Sign out everywhere</button>
-  </form>
+  <div class="actions">
+    <form method="post" action="/relay/pair/new">
+      <button class="primary" type="submit">Pair a new device</button>
+    </form>
+  </div>
+  <div class="actions">
+    <a class="btn outline" href="/relay/password">${options.hasPassword ? 'Change the password' : 'Set a password'}</a>
+    <form method="post" action="/relay/signout-everywhere">
+      <button class="outline" type="submit">Sign out everywhere</button>
+    </form>
+  </div>
   <p class="caption">Signing out everywhere rotates the signing key: every paired device and every browser session stops working at once.</p>
-  <p class="caption"><a href="/">Back to the harness</a></p>`,
+  <div class="actions">
+    <a class="btn ghost" href="/">Back to the harness</a>
+  </div>`,
   })
 }
 
@@ -288,6 +311,8 @@ export function messagePage(options: {
     body: `
   <h1>${escapeHtml(options.title)}</h1>
   <div class="notice ${options.kind ?? 'tip'}">${escapeHtml(options.message)}</div>
-  <p class="caption"><a href="/">Back</a></p>`,
+  <div class="actions">
+    <a class="btn outline" href="/">Back</a>
+  </div>`,
   })
 }

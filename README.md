@@ -38,7 +38,7 @@ Because the harness stays on loopback, a relay that fails to start or is misconf
 - **TLS**, either from your own certificate or self-signed with a published SPKI pin.
 - **mDNS advertisement** on `_dsh._tcp`, so a client can find the relay without sweeping the subnet.
 - **The whole web UI**, unchanged. The proxy is transparent, so the browser app works from a phone exactly as it does locally, with a **Relay** link in the corner for the pages above. Two small additions ride in the index document rather than the proxy: that link, and a shim that lets the page mint request ids where a browser withholds `crypto.randomUUID`.
-- **A card in Settings → Plugins**, on the machine running the harness, for the switches that are configuration rather than operations.
+- **A card in Settings → Plugins**, on the machine running the harness, for the switches that are configuration rather than operations. It follows the harness's own plugin-card idiom: the switches stage, and a **Save** writes them together — which matters here, because saving rebinds the listeners and drops the connections in flight.
 
 ## Install
 
