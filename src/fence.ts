@@ -26,7 +26,35 @@ export interface FenceRequest {
   readonly headers: IncomingHttpHeaders
   /** HTTP method; a cross-site read navigation is judged differently from a write. */
   readonly method?: string | undefined
+  /**
+   * Whether the peer really is this machine: a loopback socket that carries no
+   * forwarding headers.
+   *
+   * Only [EMULATOR_HOST_ALIAS] depends on it. A reverse proxy also connects
+   * from loopback, so "loopback peer" alone is not the same fact — behind
+   * Funnel every client on the internet arrives on that address.
+   */
+  readonly directLoopbackPeer?: boolean | undefined
 }
+
+/**
+ * The address an Android emulator reaches its host machine by.
+ *
+ * `10.0.2.2` is a fixed alias inside the emulator's private network, NAT'd to
+ * the host's loopback — so a request carrying it as `Host` and arriving on a
+ * loopback socket can only be the emulator on this machine. It is not an
+ * address the relay can discover: it never appears on any interface here, and
+ * `localAddresses()` cannot report it.
+ *
+ * Trusting it is narrower than it looks, and does not weaken the rebinding
+ * defence. That attack needs a browser to resolve an attacker's name to a
+ * local address and send the attacker's name as `Host`; to be refused here a
+ * page would have to send `Host: 10.0.2.2`, which requires the browser to be
+ * fetching `http://10.0.2.2:<port>` — an address that does not reach this
+ * relay from an ordinary machine. The exemption is gated on a direct loopback
+ * peer besides, so a forwarded request never receives it.
+ */
+export const EMULATOR_HOST_ALIAS = '10.0.2.2'
 
 /** Why a request was refused, for the log line and the response body. */
 export type FenceRejection =
@@ -202,7 +230,8 @@ function isReadNavigation(request: FenceRequest): boolean {
 
 /**
  * Decide whether one request may reach the relay's routes or its proxy.
- * @param request - the inbound request's headers.
+ * @param request - the inbound request's headers, and whether its peer is
+ *   directly this machine.
  * @param authorities - the authorities this relay answers to.
  * @returns the rejection reason, or undefined when the request passes.
  */
@@ -216,7 +245,9 @@ export function checkFence(request: FenceRequest, authorities: readonly string[]
   if (host === undefined) return 'missing-host'
   const hostUrl = parseAuthority(host)
   if (hostUrl === undefined) return 'unparsable-host'
-  if (!isLoopbackHostname(hostUrl.hostname) && !matchesAuthority(hostUrl, authorities)) return 'untrusted-host'
+  if (!isLoopbackHostname(hostUrl.hostname)
+    && !(request.directLoopbackPeer === true && hostUrl.hostname === EMULATOR_HOST_ALIAS)
+    && !matchesAuthority(hostUrl, authorities)) return 'untrusted-host'
   // Cross-site fence. The marker alone is not grounds to refuse: a person
   // typing this relay's address into the bar, or following a link to it from
   // anywhere else, produces a cross-site top-level navigation, and refusing

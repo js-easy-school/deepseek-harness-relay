@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.2.1
+
+### Fixed
+
+- **An Android emulator could not reach the relay at all.** The emulator dials
+  its host machine at the fixed alias `10.0.2.2`, which is NAT'd to this
+  machine's loopback — so the request arrived with `Host: 10.0.2.2:<port>` on a
+  loopback socket, and the fence refused it as `untrusted-host` because that
+  address never appears on any interface here and `localAddresses()` cannot
+  report it. Nothing an operator could reasonably be expected to guess, and it
+  made even the unauthenticated `/relay/health` probe answer 403, so the app
+  reported a running relay as missing.
+
+  The alias is now admitted, and only from a direct loopback peer — a
+  forwarded request never receives the exemption, so a reverse proxy fronting
+  the relay cannot inherit it. This does not weaken the DNS-rebinding defence:
+  that attack turns on a browser sending an attacker's name as `Host`, and to
+  be affected here a page would have to be fetching `http://10.0.2.2:<port>`,
+  which does not reach this relay from an ordinary machine.
+
+- **`untrusted-host` said nothing about which host.** The log line now names
+  the refused `Host` and points at `publicHostnames`, so an operator with a
+  relay answering 403 to everything can see what to add. It stays in the log
+  and out of the response body: echoing it back would repeat an attacker's
+  domain to the page that sent it.
+
 ## 0.2.0
 
 Harness 0.1.2 support.

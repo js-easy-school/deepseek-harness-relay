@@ -169,9 +169,20 @@ async function serve(
     return
   }
 
-  const rejection = checkFence({ headers: req.headers, method: req.method }, authorities)
+  const rejection = checkFence(
+    { headers: req.headers, method: req.method, directLoopbackPeer: local && !isForwarded(req.headers) },
+    authorities,
+  )
   if (rejection !== undefined) {
-    runtime.log(`refused ${req.method ?? 'GET'} ${req.url ?? '/'} from ${address}: ${rejection}`)
+    // The refused Host is named, and only in the log. It is the one fact that
+    // makes this actionable — "untrusted-host" alone leaves an operator with a
+    // relay that answers 403 to everything and nothing to change — and a relay
+    // that echoed it into the response body would repeat an attacker's domain
+    // back to the page that sent it.
+    const named = rejection === 'untrusted-host'
+      ? `${rejection} (Host: ${String(req.headers.host ?? '')}; add it to publicHostnames)`
+      : rejection
+    runtime.log(`refused ${req.method ?? 'GET'} ${req.url ?? '/'} from ${address}: ${named}`)
     res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' })
     res.end('forbidden')
     return
@@ -303,7 +314,10 @@ function serveUpgrade(
   const address = normalizeAddress(req.socket.remoteAddress)
   const local = isLoopbackHostname(address === '' ? 'x' : address)
 
-  if (checkFence({ headers: req.headers, method: req.method }, authorities) !== undefined) {
+  if (checkFence(
+    { headers: req.headers, method: req.method, directLoopbackPeer: local && !isForwarded(req.headers) },
+    authorities,
+  ) !== undefined) {
     rejectUpgrade(socket, 403, 'Forbidden')
     return
   }

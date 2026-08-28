@@ -28,6 +28,43 @@ describe('checkFence', () => {
     expect(checkFence({ headers: { host: 'evil.example:3443' } }, AUTHORITIES)).toBe('untrusted-host')
   })
 
+  it('admits the Android emulator host alias, but only from a direct loopback peer', () => {
+    // 10.0.2.2 is NAT'd to this machine's loopback from inside the emulator and never appears on
+    // an interface here, so the relay cannot discover it and an operator should not have to
+    // declare it. Arriving on a loopback socket is what makes it identifiable.
+    expect(checkFence(
+      { headers: { host: '10.0.2.2:3443' }, directLoopbackPeer: true },
+      AUTHORITIES,
+    )).toBeUndefined()
+  })
+
+  it('refuses the emulator alias from anywhere but a direct loopback peer', () => {
+    // A reverse proxy also connects from loopback. Without this gate, Funnel fronting the relay
+    // would hand every client on the internet an authority the fence never checked.
+    expect(checkFence(
+      { headers: { host: '10.0.2.2:3443' }, directLoopbackPeer: false },
+      AUTHORITIES,
+    )).toBe('untrusted-host')
+    expect(checkFence({ headers: { host: '10.0.2.2:3443' } }, AUTHORITIES)).toBe('untrusted-host')
+  })
+
+  it('does not widen the exemption to the rest of that subnet', () => {
+    // The alias is one fixed address, not a range: 10.0.2.3 is an ordinary LAN address that has
+    // to be declared like any other.
+    expect(checkFence(
+      { headers: { host: '10.0.2.3:3443' }, directLoopbackPeer: true },
+      AUTHORITIES,
+    )).toBe('untrusted-host')
+  })
+
+  it('still refuses a rebound name from a loopback peer', () => {
+    // The exemption is for one alias, not for loopback peers in general.
+    expect(checkFence(
+      { headers: { host: 'evil.example' }, directLoopbackPeer: true },
+      AUTHORITIES,
+    )).toBe('untrusted-host')
+  })
+
   it('refuses a request with no host at all', () => {
     expect(checkFence({ headers: {} }, AUTHORITIES)).toBe('missing-host')
   })
