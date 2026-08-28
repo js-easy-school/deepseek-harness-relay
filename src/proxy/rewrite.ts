@@ -34,6 +34,12 @@ const HOP_BY_HOP = new Set([
  * Headers carrying the relay's own credentials. They authenticate the client
  * to the relay and mean nothing upstream, so they stop here rather than
  * travelling on to a process that does not expect them.
+ *
+ * `cookie` is stripped and then *replaced*: from harness 0.1.2 the upstream
+ * wants a browser session of its own, and the one the client sent is the
+ * relay's, signed with a different secret for a different authority. Passing it
+ * through would be as useless as passing nothing, and would leak the relay's
+ * session into a process that has no business seeing it.
  */
 const RELAY_ONLY = new Set(['authorization', 'cookie'])
 
@@ -42,12 +48,15 @@ const RELAY_ONLY = new Set(['authorization', 'cookie'])
  * @param headers - the inbound headers, already past the fence.
  * @param loopbackAuthority - `127.0.0.1:<port>` of the harness web server.
  * @param options.keepUpgrade - retain `connection` and `upgrade` for a WebSocket handshake.
+ * @param options.cookie - the harness browser session to present, when this
+ *   harness requires one. Absent leaves the request unauthenticated, which a
+ *   pre-0.1.2 harness accepts and a 0.1.2 one answers 401.
  * @returns the headers to send upstream.
  */
 export function upstreamHeaders(
   headers: IncomingHttpHeaders,
   loopbackAuthority: string,
-  options: { readonly keepUpgrade?: boolean } = {},
+  options: { readonly keepUpgrade?: boolean, readonly cookie?: string | undefined } = {},
 ): Record<string, string | string[]> {
   const dropped = new Set(HOP_BY_HOP)
   if (options.keepUpgrade === true) {
@@ -71,6 +80,8 @@ export function upstreamHeaders(
   }
 
   out.host = loopbackAuthority
+  // After the strip, so the relay's own cookie can never survive into it.
+  if (options.cookie !== undefined) out.cookie = options.cookie
   // The harness compares Origin against Host when a browser attaches one, so a
   // forwarded edge Origin would fail that comparison after the Host rewrite.
   // It is rewritten rather than dropped so the upstream still sees a

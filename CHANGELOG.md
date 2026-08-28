@@ -1,6 +1,44 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
+
+Harness 0.1.2 support.
+
+That release authenticates the harness's whole `/api` surface against a signed
+browser-session cookie. The relay strips the client's own `Cookie` on the way
+upstream — it authenticates the phone to the relay and means nothing to the
+harness — so **without this release every proxied request is answered 401**. A
+0.1.3 relay cannot serve a 0.1.2 harness at all.
+
+### Added
+
+- **A harness browser session on every proxied request.** The relay reads the
+  harness's durable signing secret from the credential store they already
+  share (`client-connection/browser-session`) and mints a short-lived,
+  authority-bound cookie for the loopback authority it forwards to — on unary
+  calls, on the session-log download, and on the `/api/remote.mux` upgrade,
+  where a refusal would otherwise reach a phone as "the stream would not open".
+
+  This is not a bypass. A plugin that can read `ctx.credentials` already runs
+  with the operator's authority and could call any harness API in-process
+  without a cookie; minting one only lets the relay speak the same HTTP
+  contract as the browser.
+
+  Against a harness older than 0.1.2 there is no such secret and none is
+  needed; the relay logs that it is forwarding unauthenticated and carries on.
+
+### Changed
+
+- **`privilegedMethods` is the relay's own policy now, not a mirror.** Harness
+  0.1.2 deleted its `PRIVILEGED_METHODS` list: there is no loopback-only method
+  tier upstream any more, and one authenticated caller reaches the complete
+  tool-capable API. This setting is therefore the only thing standing between a
+  paired phone and the operator's settings and credential store — **set it to
+  `loopback-only` if that is not what you want.**
+- The pinned list is expressed in 0.1.2 endpoint names (`settings/update`) and
+  keeps the 0.1.1 spelling (`settings.update`) beside each, so one build gates
+  correctly against either harness. It also matches the whole endpoint rather
+  than the first path segment, which two-segment 0.1.2 names require.
 
 - The relay's own pages and its settings card now read as part of the harness
   rather than as a plugin bolted onto it.
@@ -30,6 +68,12 @@
   - The pages carry the harness's scrollbar skin, its elevation tokens, and a
     `StateDot` treatment on the status dots.
   - The corner **Relay** link sat at 0.55 opacity, legible only on hover.
+
+### Fixed
+
+- The pinned list claimed to be "checked for drift at startup". No such check
+  existed, and none can now — there is nothing upstream left to check it
+  against. The comment said so; the code did not.
 
 - Three places still assumed the only mobile client was one that could carry no
   credential. [DSH Mobile

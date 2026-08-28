@@ -95,7 +95,13 @@ export function forwardUpgrade(
     port: target.port,
     method: req.method ?? 'GET',
     path: req.url ?? '/',
-    headers: upstreamHeaders(req.headers, loopbackAuthority(target), { keepUpgrade: true }),
+    // The upgrade needs the session as much as a POST does: 0.1.2 authenticates
+    // `/api/remote.mux` before the handshake, and a refusal there surfaces to a
+    // client as a stream that would not open rather than as a 401 it can read.
+    headers: upstreamHeaders(req.headers, loopbackAuthority(target), {
+      keepUpgrade: true,
+      cookie: target.session?.cookieFor(loopbackAuthority(target)),
+    }),
     agent: false,
   })
 

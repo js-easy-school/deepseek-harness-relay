@@ -9,19 +9,23 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { connect, type Socket } from 'node:net'
-import { createHash, randomBytes } from 'node:crypto'
+import { createHash, createHmac, randomBytes } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Duplex } from 'node:stream'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Authenticator } from '../src/auth/index.ts'
+import { HarnessSession } from '../src/harness-session.ts'
 import { Config, type Config as RelayConfig } from '../src/config.ts'
 import { startListener, type RelayListener, type RelayRuntime } from '../src/server.ts'
 import { RelayStore } from '../src/state.ts'
 
 /** The RFC 6455 handshake GUID, so the fake upstream can answer a real upgrade. */
 const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
+
+/** A fixed signing secret, so a test can recompute what the harness would verify. */
+const SESSION_SECRET = Buffer.alloc(32, 7)
 
 /** What the fake upstream recorded about the last request it saw. */
 interface Seen {
@@ -125,7 +129,12 @@ async function startRelay(overrides: Partial<RelayConfig> = {}): Promise<void> {
   const runtime: RelayRuntime = {
     auth,
     config,
-    target: { host: '127.0.0.1', port: upstreamPort, timeoutMs: 5000 },
+    target: {
+      host: '127.0.0.1',
+      port: upstreamPort,
+      timeoutMs: 5000,
+      session: HarnessSession.forTesting(SESSION_SECRET),
+    },
     log: () => undefined,
   }
   relay = await startListener({
@@ -185,7 +194,50 @@ describe('http forwarding', () => {
       'Connection: close',
     ])
     expect(seen.headers?.authorization).toBeUndefined()
-    expect(seen.headers?.cookie).toBeUndefined()
+    // The client's own cookie must not survive: it is the relay's session,
+    // signed with a different secret for a different authority.
+    expect(String(seen.headers?.cookie ?? '')).not.toContain('dsh_relay_session')
+  })
+
+  it('presents a harness browser session the upstream would accept', async () => {
+    // Harness 0.1.2 answers 401 without one, and the relay strips the client's.
+    // The cookie is authority-bound, so it must name the loopback authority the
+    // request is actually forwarded to — not the edge address the client used.
+    await rawRequest(relay.port, [
+      'GET /api/echo HTTP/1.1',
+      'Host: relay.test',
+      'Connection: close',
+    ])
+    const authority = `127.0.0.1:${String(upstreamPort)}`
+    const name = 'dsh-auth-' + createHash('sha256').update(authority).digest('base64url')
+    const cookie = String(seen.headers?.cookie ?? '')
+    expect(cookie.startsWith(`${name}=v1.`)).toBe(true)
+
+    // Verify it the way the harness does: HMAC over the encoded body.
+    const [, body, signature] = cookie.slice(name.length + 1).split('.')
+    const expected = createHmac('sha256', SESSION_SECRET).update(String(body)).digest('base64url')
+    expect(signature).toBe(expected)
+
+    const payload = JSON.parse(Buffer.from(String(body), 'base64url').toString('utf8')) as {
+      version: number
+      authority: string
+      issuedAt: number
+      expiresAt: number
+    }
+    expect(payload.version).toBe(1)
+    expect(payload.authority).toBe(authority)
+    expect(payload.expiresAt).toBeGreaterThan(payload.issuedAt)
+  })
+
+  it('presents the session on a WebSocket upgrade too', async () => {
+    // The mux upgrade is authenticated before the handshake, and a refusal
+    // there reaches a client as a stream that would not open rather than as a
+    // 401 it can read — so a session missing here is the hardest kind to
+    // diagnose from the phone.
+    await rawUpgrade(relay.port, '/api/remote.mux', 'relay.test')
+    const authority = `127.0.0.1:${String(upstreamPort)}`
+    const name = 'dsh-auth-' + createHash('sha256').update(authority).digest('base64url')
+    expect(String(seen.headers?.cookie ?? '')).toContain(`${name}=v1.`)
   })
 
   it('refuses an untrusted Host before anything reaches the harness', async () => {
@@ -256,7 +308,7 @@ describe('websocket forwarding', () => {
 
   it('refuses an upgrade from an untrusted host without opening one upstream', async () => {
     seen.url = undefined
-    const answer = await rawUpgrade(relay.port, '/api/events.mux', 'evil.example')
+    const answer = await rawUpgrade(relay.port, '/api/remote.mux', 'evil.example')
     expect(answer).toContain('403')
     expect(seen.url).toBeUndefined()
   })

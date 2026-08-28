@@ -2,17 +2,24 @@
  * A UUID for a page the browser refuses to call secure.
  *
  * `crypto.randomUUID` is `[SecureContext]`: browsers expose it over HTTPS and
- * on loopback, and nowhere else. The harness's browser client mints ids with
- * it in three places — `AbstractApiClient.mintRpcId`, which every unary RPC
- * goes through, `createMessage`, and the conversation plugin's draft
- * attachments. Served from a LAN address over plain HTTP the function is
- * simply absent, and the first thing to reach for it is the readiness
- * handshake in `ConnectionController.loop`: `host.describe` throws, the catch
- * aborts the generation, and both `/api/events.*` sockets — which hold that
- * generation's abort signal — are closed while still CONNECTING. The
- * supervisor retries with backoff forever, so sessions, workspaces, and the
- * model picker never arrive. Unary calls keep working, which is why sign-in
- * looks fine and only the live page is dead.
+ * on loopback, and nowhere else.
+ *
+ * **Harness 0.1.2 fixed this upstream.** `randomUuid()` in
+ * `packages/client/connection/src/client/random-uuid.ts` now builds a v4 UUID
+ * from `crypto.getRandomValues()`, which browsers do expose on an insecure
+ * origin, so a 0.1.2 page served from a plain-HTTP LAN address works without
+ * this shim.
+ *
+ * It is kept for the harness releases before that. Through 0.1.1 the browser
+ * client minted ids with `randomUUID` in three places — `mintRpcId`, which
+ * every unary RPC went through, `createMessage`, and the conversation plugin's
+ * draft attachments. Served over plain HTTP the function was simply absent,
+ * and the first thing to reach for it was the readiness handshake:
+ * `host.describe` threw, the catch aborted the generation, and both
+ * `/api/events.*` sockets — which held that generation's abort signal — closed
+ * while still CONNECTING. The supervisor retried forever, so sessions,
+ * workspaces and the model picker never arrived. Unary calls kept working,
+ * which is why sign-in looked fine and only the live page was dead.
  *
  * The relay reaches that page anyway. `tls: 'off'` in front of a proxy that
  * terminates elsewhere is a documented configuration here, and the plain
@@ -27,8 +34,9 @@
  * streaming them.
  *
  * It defines nothing where the real function exists, so a TLS deployment and
- * the harness's own loopback port parse it and return. The upstream fix
- * belongs in `mintRpcId`; this holds the page together until it lands.
+ * the harness's own loopback port parse it and return. Against 0.1.2 it still
+ * defines `randomUUID` on a plain-HTTP page, where nothing calls it any more:
+ * harmless, and the price of one build serving both releases.
  * @module dsh-relay/secure-context
  */
 

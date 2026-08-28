@@ -9,6 +9,7 @@
 
 import { request as httpRequest } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { HarnessSession } from '../harness-session.ts'
 import { downstreamHeaders, upstreamHeaders } from './rewrite.ts'
 
 /** What the forwarder needs to reach the harness. */
@@ -19,6 +20,15 @@ export interface UpstreamTarget {
   readonly port: number
   /** Deadline for the upstream response to begin. */
   readonly timeoutMs: number
+  /**
+   * Mints the harness browser session each forwarded request carries.
+   *
+   * Absent against a harness older than 0.1.2, which required none. Against
+   * 0.1.2 and later its absence means every proxied request is answered 401,
+   * which the relay reports at startup rather than leaving to be discovered
+   * one refused request at a time.
+   */
+  readonly session?: HarnessSession | undefined
 }
 
 /** The authority the harness sees, and compares its own fence against. */
@@ -40,7 +50,9 @@ export function forward(req: IncomingMessage, res: ServerResponse, target: Upstr
       port: target.port,
       method: req.method ?? 'GET',
       path: req.url ?? '/',
-      headers: upstreamHeaders(req.headers, loopbackAuthority(target)),
+      headers: upstreamHeaders(req.headers, loopbackAuthority(target), {
+        cookie: target.session?.cookieFor(loopbackAuthority(target)),
+      }),
       // Each proxied request gets its own socket rather than sharing the
       // global agent's pool, so one stalled streaming response cannot hold a
       // slot another request is waiting for.

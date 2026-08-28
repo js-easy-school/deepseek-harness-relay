@@ -12,8 +12,24 @@ Built on DeepSeek Harness. Not an official DeepSeek project.
 The harness serves its browser API on loopback and is explicit about what it does not do:
 
 - `packages/client/connection/src/api-request-trust.ts` — the `/api` fence "is not an auth layer".
-- `packages/client/connection/src/index.ts` — the configuration plane stays loopback-only "until a real authentication layer exists".
 - `packages/bundle/web-app/src/startup.ts` — `dsh web --host 0.0.0.0` is refused, because "it would expose remote code execution to the network".
+
+Harness **0.1.2** added authentication of its own: a signed browser-session
+cookie, obtained by exchanging a launch token the harness prints once per
+process, now required on the whole `/api` surface. That is a real improvement
+and it changes what this relay is for — but not whether it is needed. The
+harness still refuses `--host 0.0.0.0`, still has no TLS, and its cookie is
+minted only at its own index route, so there is still nothing that lets a phone
+reach it across a network safely. The relay remains the layer that terminates
+TLS, pins a key, and decides who gets in.
+
+What did change is that the harness **deleted its loopback-only method tier**.
+Through 0.1.1 it pinned `settings.*`, `credentials.*` and the host pickers to
+loopback itself, and this relay mirrored that list so its `Host` rewrite could
+not lift the pin. 0.1.2 has one uniform authenticated surface: whoever holds a
+session reaches all of it. `privilegedMethods` is therefore no longer a mirror
+of anything — it is this relay's own policy, and the only thing between a
+paired phone and the operator's credential store.
 
 The workaround people use today is a config patch that rebinds the web server to `0.0.0.0` with no authentication at all. Anyone on the same Wi-Fi can then drive the agent, which means running commands on your computer.
 
@@ -141,7 +157,7 @@ Every value lives in your profile's `cordis.patch.yml` under the `relay` row. Yo
 | `pairingWindowMs` | 5 min | How long a pairing code stays claimable. |
 | `maxFailedAttempts` / `lockoutMs` | 5 / 15 min | Sign-in lockout. |
 | `rateLimitPerMinute` | 600 | Per-address request ceiling. |
-| `privilegedMethods` | `allow-authenticated` | Whether an authenticated remote client reaches settings, credentials, model discovery, and host pickers. Address-granted clients never do, regardless. |
+| `privilegedMethods` | `allow-authenticated` | Whether an authenticated remote client reaches settings, credentials, model discovery, and host pickers. Address-granted clients never do, regardless. From harness 0.1.2 this is the *only* thing gating them — the harness no longer pins them itself. |
 | `extraProxyPaths` | `[]` | Additional path prefixes a write may address. |
 | `compat.addressGrants` | `true` | The pre-0.8.0 DSH Mobile bridge described above. |
 | `compat.plainPort` | `0` | Plain-HTTP listener for clients that cannot use TLS. Accepts a bearer token as well as a grant, so it outlives `addressGrants`. |
@@ -179,7 +195,7 @@ Forward the relay's port, not the harness's. Then:
 - Set `publicHostnames` to the name you reach it by, or the fence will refuse the request.
 - Use a real certificate. Self-signed plus pinning is a LAN answer.
 - Leave `compat.addressGrants` off. Behind carrier NAT a public address is shared with strangers, and the relay refuses to grant one anyway.
-- Consider `privilegedMethods: loopback-only`.
+- Set `privilegedMethods: loopback-only`. On harness 0.1.2 and later this is not a second layer of caution; it is the only one, since the harness serves its whole API to any authenticated caller.
 
 **Do not put Funnel, Serve, nginx, or Caddy in front of `http://127.0.0.1:3443`.** Those proxies connect from loopback, and loopback is the operator: the relay will not ask for a password or a device token. Point the proxy at a non-loopback address this process is listening on (the Tailscale IP, or a VPC address), keep `bind: 0.0.0.0`, and drop `:3443` on the public NIC so that address is not a second door.
 
@@ -213,6 +229,8 @@ Set the network to Private. If it still times out, check the router for AP/clien
 **DSH Mobile says "the harness rejected this address".** That is a 403. Either the address grant expired or the phone's address changed; pair again from the phone's browser.
 
 **The page loads but the sidebar stays empty, and the console repeats `connection lost, retry #N`.** Browsers expose `crypto.randomUUID` only over HTTPS or on `localhost`, and the harness's browser client mints every RPC id with it — so over plain HTTP from a LAN address the readiness handshake throws and both event sockets are closed before they open. Unary calls still work, which is why sign-in looks fine. The relay ships a shim for this in the index document, so if you still see it the page did not come from that document: hard-reload past a cached copy, and check that nothing in front of the relay is serving its own `index.html`. Browsing over TLS or from `127.0.0.1` avoids it outright.
+
+**Everything is refused with 401, or the app reports a stream that would not open.** The relay could not mint a harness browser session. Harness 0.1.2 authenticates its whole `/api` surface, and the relay signs a cookie using the harness's own durable secret at `client-connection/browser-session` — which the harness creates the first time `dsh web` runs. Start `dsh web` once, then reload the plugin; the relay logs a line at startup when it could not find that secret.
 
 **The model picker is empty, and settings pages say "settings are unavailable in this browser".** Expected on any address but loopback, over TLS as well, and not something the relay can fix from where it sits. The harness's browser client decides whether the configuration plane exists by reading `location.hostname`; on a LAN address it creates the settings mirror in memory and never sends the calls — which this relay would have carried, since `privilegedMethods` defaults to letting an authenticated client through. Sessions, workspaces, and chat are unaffected. Reach settings, the provider directory, and model discovery from a browser on the machine running the harness. The fix belongs upstream, in the client rather than the relay; see [#4](https://github.com/sorsama/deepseek-harness-relay/issues/4).
 
